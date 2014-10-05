@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<title>Multiplayer</title>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=300, height=500, initial-scale=1" />
+	<style>
+	* { box-sizing: border-box; font-size: 20px; font-family: arial; margin: 0; padding: 0; }
+	html { height: 100%; border: solid 20px black; }
+	html.active { border-color: green; }
+	html.error { border-color: red; }
+
+	html, body {
+		overflow: hidden;
+	}
+	body {
+		height: 100%;
+		position: relative;
+		padding: 20px;
+		-webkit-user-select: none;
+	}
+	p {
+		margin: 0 0 20px 0;
+	}
+
+	.client {
+		position: absolute;
+		width: 30px;
+		height: 30px;
+		background: none #ddd;
+		z-index: 2;
+		margin-left: -15px;
+		margin-top: -15px;
+	}
+	.client.me-client {
+		border: solid 5px #000;
+		z-index: 3;
+		cursor: pointer;
+	}
+	</style>
+	<script>
+	function _log() {
+		return console.log.apply(console, arguments);
+	}
+	(function(P) {
+		P.on = P.addEventListener;
+		P.sendJSON = function(data, callback) {
+			return this.send(JSON.stringify(data), callback);
+		};
+		P.sendCmd = function(cmd, data) {
+			data || (data = {});
+			data.cmd = cmd;
+			return this.sendJSON(data);
+		};
+	})(WebSocket.prototype);
+	</script>
+</head>
+
+<body onload="init()">
+
+<!-- <form onsubmit="socket.sendCmd('eval', {code: this.elements.code.value}); return false">
+	<p>Eval:<br><textarea name="code" rows="5" style="width: 100%">this.wsServer.connections.forEach(function(client) {
+  _log(client.data);
+});</textarea></p>
+	<p><button>Run</button></p>
+</form> -->
+
+<div id="clients"></div>
+
+<script>
+window.onerror = function(e) {
+	alert(e);
+};
+
+
+
+var html = document.documentElement,
+	body = document.body,
+	clients = document.querySelector('#clients'),
+	bsize = [0, 0],
+	boffset = [0, 0];
+
+
+
+function createClient(data, me) {
+	el = document.createElement('div');
+	el.dataset.id = data.id;
+	el.textContent = '';
+	el.className = 'client';
+	me && (el.className += ' me-client');
+	el.style.backgroundColor = data.color;
+	el.style.left = data.coords[0] + '%';
+	el.style.top = data.coords[1] + '%';
+	clients.appendChild(el);
+	return el;
+}
+
+function updateClientCoords(x, y, relative) {
+	var el = document.querySelector('.client.me-client');
+	if ( relative ) {
+		x = parseInt(el.style.left) + x;
+		y = parseInt(el.style.top) + y;
+	}
+
+	x = x / bsize[0] * 100;
+	y = y / bsize[1] * 100;
+
+	el.style.left = x + '%';
+	el.style.top = y + '%';
+
+	socket.sendCmd('move', {
+		coords: [x, y],
+	});
+}
+
+
+
+var commands = {
+	// The server accepts me and tells me where to start
+	join: function(msg) {
+		if ( !msg.coords ) {
+			throw "Missing 'coords' in message.";
+		}
+
+		var el = document.querySelector('.client.me-client');
+		if ( el ) {
+			// Server sent 'join' more than once = bad, but accept new coords
+			el.style.left = msg.coords[0] + '%';
+			el.style.top = msg.coords[1] + '%';
+		}
+		else {
+			createClient(msg, true);
+			msg.others.forEach(function(other) {
+				createClient(other);
+			});
+			console.timeEnd('Joined game.');
+		}
+	},
+
+	// Someone else joined the game
+	party: function(msg) {
+		createClient(msg);
+	},
+
+	// Someone left the game
+	unparty: function(msg) {
+		var client = document.querySelector('.client[data-id="' + msg.id + '"');
+		client.style.display = 'none';
+	},
+
+	// Someone moved
+	partymove: function(msg) {
+		var client = document.querySelector('.client[data-id="' + msg.id + '"');
+		client.style.left = msg.coords[0] + '%';
+		client.style.top = msg.coords[1] + '%';
+	},
+};
+
+
+
+var url = location.protocol.replace('http', 'ws') + "//" + location.hostname + ":8084",
+	socket;
+
+function init() {
+	var cr = body.getBoundingClientRect();
+	boffset[0] = cr.left;
+	boffset[1] = cr.top;
+	bsize[0] = cr.width;
+	bsize[1] = cr.height;
+
+	console.time('Websocket initialized.');
+	console.time('Joined game.');
+	_log('initializing socket...');
+	socket = new WebSocket(url);
+
+	socket.on("open", function(e, name) {
+		_log('on open');
+		html.classList.add('active');
+		console.timeEnd('Websocket initialized.');
+
+		var tracking = false;
+
+		body.addEventListener('mousedown', function(e) {
+			if ( e.target.classList.contains('me-client') ) {
+				tracking = true;
+			}
+		});
+		body.addEventListener('mousemove', function(e) {
+			if ( tracking ) {
+				updateClientCoords(e.x - boffset[0], e.y - boffset[1]);
+			}
+		});
+		body.addEventListener('mouseup', function(e) {
+			tracking = false;
+		});
+
+		body.addEventListener('touchstart', function(e) {
+			e.preventDefault();
+
+			if ( e.target.classList.contains('me-client') ) {
+				tracking = true;
+			}
+		});
+		body.addEventListener('touchmove', function(e) {
+			e.preventDefault();
+
+			if ( tracking ) {
+				var x = e.targetTouches[0].pageX - boffset[0];
+				var y = e.targetTouches[0].pageY - boffset[1];
+				updateClientCoords(x, y);
+			}
+		});
+		body.addEventListener('touchend', function(e) {
+			tracking = false;
+		});
+	});
+
+	socket.on("message", function(e) {
+		_log('message', e);
+		try {
+			var msg = JSON.parse(e.data);
+			if ( !msg.cmd ) {
+				throw "Missing 'cmd' in message.";
+			}
+
+			if ( !commands[msg.cmd] ) {
+				throw "Invalid cmd '" + msg.cmd + "'.";
+			}
+		}
+		catch (ex) {
+			_log('INVALID INCOMING:');
+			_log(e.data);
+			return;
+		}
+
+		var cmd = commands[msg.cmd];
+		try {
+			_log("Executing '" + msg.cmd + "'", msg);
+			console.time("Executed '" + msg.cmd + "'");
+			cmd.call(this, msg);
+			console.timeEnd("Executed '" + msg.cmd + "'");
+		}
+		catch (ex) {
+			console.error("Error while executing '" + msg.cmd + "': " + ex);
+		}
+	});
+
+	socket.on("error", function(e) {
+		_log('on error', e);
+	});
+
+	socket.on("close", function(e) {
+		_log('on close', e);
+		html.classList.remove('active');
+		html.classList.add('error');
+	});
+}
+</script>
+
+</body>
+
+</html>
