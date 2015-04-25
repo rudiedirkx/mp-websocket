@@ -109,7 +109,7 @@ function updateClientCoords(x, y, relative) {
 	el.style.left = x + '%';
 	el.style.top = y + '%';
 
-	socket.sendCmd('move', {
+	SOCKET.sendCmd('move', {
 		coords: [x, y],
 	});
 }
