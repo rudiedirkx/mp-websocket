@@ -159,8 +159,27 @@ var commands = {
 
 
 
-var url = location.protocol.replace('http', 'ws') + "//" + location.hostname + ":8084",
-	socket;
+var PORT = 8085;
+var SOCKET;
+
+function createSocket(port, ssl, callback) {
+	var url = (ssl ? 'wss:' : 'ws:') + '//' + location.hostname + ':' + port;
+	var socket = new WebSocket(url);
+	socket.on('open', function() {
+		this.connectedAt = new Date;
+
+		callback.call(this, ssl);
+	});
+	socket.on('close', function() {
+		// Never been connected, so failed to
+		if ( !this.connectedAt ) {
+			// If we just tried SSL and the browser isn't using SSL, we can try non-SSL
+			if ( ssl && location.protocol == 'http:' ) {
+				createSocket(port, false, callback);
+			}
+		}
+	});
+}
 
 function init() {
 	var cr = body.getBoundingClientRect();
@@ -172,9 +191,9 @@ function init() {
 	console.time('Websocket initialized.');
 	console.time('Joined game.');
 	_log('initializing socket...');
-	socket = new WebSocket(url);
+	createSocket(PORT, true, function(ssl) {
+		SOCKET = this;
 
-	socket.on("open", function(e, name) {
 		_log('on open');
 		html.classList.add('active');
 		console.timeEnd('Websocket initialized.');
@@ -214,48 +233,50 @@ function init() {
 		body.addEventListener('touchend', function(e) {
 			tracking = false;
 		});
-	});
 
-	socket.on("message", function(e) {
-		_log('message', e);
-		try {
-			var msg = JSON.parse(e.data);
-			if ( !msg.cmd ) {
-				throw "Missing 'cmd' in message.";
+		this.on("message", function(e) {
+			_log('message', e);
+			try {
+				var msg = JSON.parse(e.data);
+				if ( !msg.cmd ) {
+					throw "Missing 'cmd' in message.";
+				}
+
+				if ( !commands[msg.cmd] ) {
+					throw "Invalid cmd '" + msg.cmd + "'.";
+				}
+			}
+			catch (ex) {
+				_log('INVALID INCOMING:');
+				_log(e.data);
+				return;
 			}
 
-			if ( !commands[msg.cmd] ) {
-				throw "Invalid cmd '" + msg.cmd + "'.";
+			var cmd = commands[msg.cmd];
+			try {
+				_log("Executing '" + msg.cmd + "'", msg);
+				console.time("Executed '" + msg.cmd + "'");
+				cmd.call(this, msg);
+				console.timeEnd("Executed '" + msg.cmd + "'");
 			}
-		}
-		catch (ex) {
-			_log('INVALID INCOMING:');
-			_log(e.data);
-			return;
-		}
+			catch (ex) {
+				console.error("Error while executing '" + msg.cmd + "': " + ex);
+			}
+		});
 
-		var cmd = commands[msg.cmd];
-		try {
-			_log("Executing '" + msg.cmd + "'", msg);
-			console.time("Executed '" + msg.cmd + "'");
-			cmd.call(this, msg);
-			console.timeEnd("Executed '" + msg.cmd + "'");
-		}
-		catch (ex) {
-			console.error("Error while executing '" + msg.cmd + "': " + ex);
-		}
-	});
+		this.on("error", function(e) {
+			_log('on error', e);
+		});
 
-	socket.on("error", function(e) {
-		_log('on error', e);
-	});
+		this.on("close", function(e) {
+			_log('on close', e);
+			html.classList.remove('active');
+			html.classList.add('error');
+		});
 
-	socket.on("close", function(e) {
-		_log('on close', e);
-		html.classList.remove('active');
-		html.classList.add('error');
-	});
-}
+	}); // createSocket()
+
+} // init()
 </script>
 
 </body>

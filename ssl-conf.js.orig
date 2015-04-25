@@ -1,0 +1,11 @@
+var fs = require('fs');
+
+// With SSL, if this is a self-signed certificate, you'll have
+// to accept it in your browser by visiting it.
+module.exports = {
+	key: fs.readFileSync('./ssl/localhost.key'),
+	cert: fs.readFileSync('./ssl/localhost.crt'),
+};
+
+// Without SSL
+// module.exports = false;

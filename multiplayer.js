@@ -1,5 +1,4 @@
-var websocket = require('websocket'),
-	rwebsocket = require('./rwebsocket.js');
+var rwebsocket = require('./rwebsocket.js');
 
 
 
@@ -68,8 +67,9 @@ var commands = {
 
 
 var options = {
-	port: 8084,
+	port: 8085,
+	ssl : require('./ssl-conf.js'),
 	commands: commands,
 }
-var rws = rwebsocket(options, websocket);
+var rws = rwebsocket(options);
 var wsServer = rws.wsServer;

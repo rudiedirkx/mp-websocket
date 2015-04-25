@@ -1,4 +1,6 @@
 var http = require('http'),
+	https = require('https'),
+	websocket = require('websocket'),
 	util = require('util');
 
 function _log(msg) {
@@ -31,8 +33,9 @@ function _id() {
  * - commands
  */
 
-module.exports = function(options, websocket) {
+module.exports = function(options) {
 	var HTTPServer = http.Server;
+	var HTTPSServer = https.Server;
 	var WebSocketServer = websocket.server;
 	var WebSocketConnection = websocket.connection;
 
@@ -110,9 +113,11 @@ module.exports = function(options, websocket) {
 
 
 
-	// Create HTTP and WebSocket servers
-	var httpServer = new HTTPServer().listen(options.port, function() {
-		_log('Server is listening on port ' + options.port);
+	// Create HTTP(S) and WebSocket servers
+	var httpServer = options.ssl ? new HTTPSServer(options.ssl) : new HTTPServer();
+	httpServer.listen(options.port, function() {
+		var httpx = options.ssl ? 'HTTPS' : 'HTTP';
+		_log(httpx + ' server is listening on port ' + options.port);
 	});
 	var wsServer = new WebSocketServer({
 		httpServer: httpServer,
